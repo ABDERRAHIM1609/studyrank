@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, ensureDatabaseTables } from '@/lib/db';
 import { users } from '@/drizzle/schema';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
@@ -24,12 +24,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check email uniqueness
-    const [existing] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, email.toLowerCase()))
-      .limit(1);
+    // Attempt to check email uniqueness (auto-creating tables if not initialized yet)
+    let existing = null;
+    try {
+      const results = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, email.toLowerCase()))
+        .limit(1);
+      existing = results[0];
+    } catch (err: any) {
+      if (err?.message?.includes('does not exist')) {
+        await ensureDatabaseTables();
+      } else {
+        throw err;
+      }
+    }
 
     if (existing) {
       return NextResponse.json(
@@ -58,10 +68,10 @@ export async function POST(req: NextRequest) {
       { success: true, user: newUser },
       { status: 201 }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error('Register error:', error);
     return NextResponse.json(
-      { error: 'Internal server error.' },
+      { error: error?.message || 'Internal server error.' },
       { status: 500 }
     );
   }
