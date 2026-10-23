@@ -6,9 +6,6 @@ import { sql } from 'drizzle-orm';
 // GET /api/leaderboard?scope=national|city|school&date=YYYY-MM-DD
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
 
   const { searchParams } = new URL(req.url);
   const scope = searchParams.get('scope') || 'national';
@@ -18,12 +15,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'date is required' }, { status: 400 });
   }
 
-  const user = session.user as any;
+  const user = session?.user as any;
+
+  if ((scope === 'school' || scope === 'city') && !user) {
+    return NextResponse.json(
+      { error: 'Please log in to view school or city rankings.', entries: [] },
+      { status: 401 }
+    );
+  }
 
   let whereClause = sql`1=1`;
-  if (scope === 'school') {
+  if (scope === 'school' && user?.school) {
     whereClause = sql`u.school = ${user.school}`;
-  } else if (scope === 'city') {
+  } else if (scope === 'city' && user?.city) {
     whereClause = sql`u.city = ${user.city}`;
   }
 
